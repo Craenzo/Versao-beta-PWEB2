@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Send, Loader2, Bot, Menu, User, X, CheckSquare, Square, LogOut, Download } from "lucide-react";
 
 export default function Home() {
@@ -12,22 +13,18 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
-  // Estados de Autenticação
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(undefined);
   const [activeChatId, setActiveChatId] = useState(null);
   const [historicoChats, setHistoricoChats] = useState([]);
 
-  // Controle de quais IAs estão ativas na tela
+  // NOVO: Array unificado de mensagens para o chat vertical
+  // Formato: { id, role: 'user' | 'assistant', content: 'texto', ia_id: 'chatgpt' | null }
+  const [chatMessages, setChatMessages] = useState([]);
+
   const [iasAtivas, setIasAtivas] = useState({
     chatgpt: true,
     gemini: true,
     grok: true
-  });
-  
-  const [respostas, setRespostas] = useState({
-    chatgpt: "",
-    gemini: "",
-    grok: ""
   });
 
   const modelos = [
@@ -36,7 +33,12 @@ export default function Home() {
     { id: "grok", nome: "Grok", modeloApi: "x-ai/grok-4.3", cor: "text-red-400" }
   ];
 
-  // 1. Monitorar se o usuário está logado
+  // Auto-scroll para o final das mensagens
+  const messagesEndRef = useRef(null);
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages, loading]);
+
   useEffect(() => {
     const obterSessao = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -51,7 +53,6 @@ export default function Home() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // 2. Buscar a lista de chats salvos do usuário logado
   const carregarListaChats = useCallback(async (userId) => {
     if (!userId) return;
     const { data, error } = await supabase
@@ -71,11 +72,11 @@ export default function Home() {
     }
   }, [user, carregarListaChats]);
 
-  // 3. Carregar mensagens de um chat selecionado no histórico
+  // Carrega as mensagens na vertical
   const carregarMensagensDoChat = async (chatId) => {
     setActiveChatId(chatId);
     setIsSidebarOpen(false);
-    setRespostas({ chatgpt: "", gemini: "", grok: "" });
+    setChatMessages([]);
 
     const { data, error } = await supabase
       .from("mensagens")
@@ -84,13 +85,13 @@ export default function Home() {
       .order("created_at", { ascending: true });
 
     if (!error && data) {
-      const novasRespostas = { chatgpt: "", gemini: "", grok: "" };
-      data.forEach((msg) => {
-        if (msg.ia_id !== "user") {
-          novasRespostas[msg.ia_id] = msg.conteudo;
-        }
-      });
-      setRespostas(novasRespostas);
+      const formatadas = data.map((msg) => ({
+        id: msg.id,
+        role: msg.ia_id === "user" ? "user" : "assistant",
+        content: msg.conteudo,
+        ia_id: msg.ia_id === "user" ? null : msg.ia_id
+      }));
+      setChatMessages(formatadas);
     }
   };
 
@@ -98,19 +99,20 @@ export default function Home() {
     setIasAtivas(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
-  // 4. Lógica de Envio do Prompt + Salvamento no Banco
   const enviarPrompt = async (e) => {
     e.preventDefault();
     if (!prompt.trim()) return;
 
     setLoading(true);
     const promptAtual = prompt;
-    setPrompt(""); // Limpa o campo de digitação de imediato
-    setRespostas({ chatgpt: "", gemini: "", grok: "" });
+    setPrompt("");
+
+    // 1. Adiciona a mensagem do usuário na tela instantaneamente
+    const novoUserMsg = { id: Date.now().toString(), role: "user", content: promptAtual, ia_id: null };
+    setChatMessages(prev => [...prev, novoUserMsg]);
 
     let chatId = activeChatId;
 
-    // Se o usuário estiver logado e for um chat novo, cria a sessão de chat primeiro
     if (user && !chatId) {
       const tituloGerado = promptAtual.length > 25 ? promptAtual.substring(0, 25) + "..." : promptAtual;
       const { data: novoChat, error: erroChat } = await supabase
@@ -126,7 +128,6 @@ export default function Home() {
       }
     }
 
-    // Se o chat foi criado/existe, salva o prompt do usuário
     if (user && chatId) {
       await supabase.from("mensagens").insert([
         { chat_id: chatId, ia_id: "user", conteudo: promptAtual }
@@ -137,31 +138,34 @@ export default function Home() {
 
     const promessas = modelosAtivos.map(async (ia) => {
       try {
+        // Prepara o histórico específico desta IA + a nova pergunta
+        const historicoIA = chatMessages
+          .filter(m => m.role === "user" || m.ia_id === ia.id)
+          .map(m => ({ role: m.role, content: m.content }));
+        
+        historicoIA.push({ role: "user", content: promptAtual });
+
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt: promptAtual, model: ia.modeloApi }),
+          body: JSON.stringify({ messages: historicoIA, model: ia.modeloApi }),
         });
         
         const data = await res.json();
         const respostaTexto = data.text || data.error || "Erro ao gerar resposta.";
         
-        setRespostas((prev) => ({
-          ...prev,
-          [ia.id]: respostaTexto
-        }));
+        // 2. Adiciona a resposta da IA na tela
+        const novaIAMsg = { id: Math.random().toString(), role: "assistant", content: respostaTexto, ia_id: ia.id };
+        setChatMessages(prev => [...prev, novaIAMsg]);
 
-        // Salva a resposta da respectiva IA no banco de dados
         if (user && chatId) {
           await supabase.from("mensagens").insert([
             { chat_id: chatId, ia_id: ia.id, conteudo: respostaTexto }
           ]);
         }
       } catch (error) {
-        setRespostas((prev) => ({
-          ...prev,
-          [ia.id]: "Falha na conexão com a API."
-        }));
+        const errorMsg = { id: Math.random().toString(), role: "assistant", content: "Falha na conexão.", ia_id: ia.id };
+        setChatMessages(prev => [...prev, errorMsg]);
       }
     });
 
@@ -169,27 +173,15 @@ export default function Home() {
     setLoading(false);
   };
 
-  // 5. Função para Exportar Conversa em Markdown (Ideia 5)
-  const exportarParaMarkdown = (id, nomeIa) => {
-    const conteudo = respostas[id];
-    if (!conteudo) return;
-
-    const textoMarkdown = `# Histórico de Resposta - ${nomeIa}\n\n${conteudo}`;
-    const blob = new Blob([textoMarkdown], { type: "text/markdown;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.setAttribute("download", `resposta_${id}.md`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const novaConversa = () => {
+    setActiveChatId(null);
+    setChatMessages([]);
   };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setUser(null);
-    setActiveChatId(null);
-    setRespostas({ chatgpt: "", gemini: "", grok: "" });
+    novaConversa();
   };
 
   const qtdAtivas = Object.values(iasAtivas).filter(Boolean).length;
@@ -198,7 +190,6 @@ export default function Home() {
   return (
     <div className="flex flex-col h-screen bg-zinc-950 text-zinc-100 font-sans overflow-hidden">
       
-      {/* 1. BARRA SUPERIOR (HEADER) */}
       <header className="px-4 py-3 border-b border-zinc-800 bg-zinc-900 flex items-center justify-between z-10 shadow-md">
         <div className="flex items-center gap-4">
           <button onClick={() => setIsSidebarOpen(true)} className="p-2 hover:bg-zinc-800 rounded-md transition-colors text-zinc-300">
@@ -208,15 +199,16 @@ export default function Home() {
             <Bot className="text-green-400 w-8 h-8" />
             <h1 className="text-xl font-bold tracking-wider hidden sm:block">HUB DE <span className="text-green-400">IAS</span></h1>
           </div>
-          {activeChatId && (
-            <button onClick={() => { setActiveChatId(null); setRespostas({ chatgpt: "", gemini: "", grok: "" }); }} className="text-xs bg-zinc-800 hover:bg-zinc-700 px-3 py-1 rounded-md text-zinc-400 hover:text-zinc-200 transition-colors">
+          {chatMessages.length > 0 && (
+            <button onClick={novaConversa} className="text-xs bg-zinc-800 hover:bg-zinc-700 px-3 py-1 rounded-md text-zinc-400 hover:text-zinc-200 transition-colors">
               + Novo Chat
             </button>
           )}
         </div>
         
-        {/* Lógica Dinâmica do Botão de Login / Usuário */}
-        {user ? (
+        {user === undefined ? (
+          <div className="w-24 h-8 bg-zinc-800 animate-pulse rounded-full"></div>
+        ) : user ? (
           <div className="flex items-center gap-3">
             <span className="text-xs text-zinc-400 hidden md:inline max-w-[150px] truncate">{user.email}</span>
             <button onClick={handleLogout} className="flex items-center gap-2 bg-red-950/40 hover:bg-red-900/40 border border-red-900/30 text-red-400 px-4 py-2 rounded-full transition-colors text-sm font-semibold">
@@ -225,18 +217,16 @@ export default function Home() {
             </button>
           </div>
         ) : (
-          <button onClick={() => router.push("/login")} className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 px-4 py-2 rounded-full transition-colors border border-zinc-700 shadow-sm">
+          <Link href="/login" className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 px-4 py-2 rounded-full transition-colors border border-zinc-700 shadow-sm">
             <User className="w-4 h-4 text-green-400" />
             <span className="text-sm font-semibold tracking-wide">Login</span>
-          </button>
+          </Link>
         )}
       </header>
 
-      {/* 2. MENU LATERAL (SIDEBAR COM HISTÓRICO E SELEÇÃO) */}
       {isSidebarOpen && (
         <div className="absolute inset-0 z-50 flex">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => setIsSidebarOpen(false)}></div>
-          
           <div className="relative w-80 bg-zinc-900 border-r border-zinc-800 h-full p-6 shadow-2xl flex flex-col">
             <div className="flex justify-between items-center mb-6 pb-4 border-b border-zinc-800">
               <h2 className="text-lg font-bold tracking-wide">Painel de Controle</h2>
@@ -245,7 +235,6 @@ export default function Home() {
               </button>
             </div>
             
-            {/* Seleção de Modelos */}
             <div className="mb-6">
               <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3">Modelos na Tela</h3>
               <div className="flex flex-col gap-2">
@@ -262,11 +251,10 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Histórico de Conversas salvas no Banco */}
             <div className="flex-1 overflow-y-auto border-t border-zinc-800/80 pt-4 flex flex-col">
               <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3">Histórico de Conversas</h3>
               {!user ? (
-                <p className="text-xs text-zinc-600 italic text-center my-4">Faça login para salvar e ver o histórico de conversas.</p>
+                <p className="text-xs text-zinc-600 italic text-center my-4">Faça login para salvar e ver o histórico.</p>
               ) : historicoChats.length === 0 ? (
                 <p className="text-xs text-zinc-600 italic text-center my-4">Nenhum chat salvo ainda.</p>
               ) : (
@@ -287,7 +275,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* 3. ÁREA PRINCIPAL (CHATS LADO A LADO) */}
       <main className="flex-1 overflow-hidden p-4">
         {qtdAtivas === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-zinc-500 gap-4">
@@ -296,64 +283,68 @@ export default function Home() {
           </div>
         ) : (
           <div className={`grid ${gridCols} gap-4 h-full`}>
-            {modelos.filter(ia => iasAtivas[ia.id]).map((ia) => (
-              <div key={ia.id} className="flex flex-col bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden h-full shadow-lg">
-                
-                {/* Cabeçalho da Coluna com Botão de Exportar */}
-                <div className={`bg-zinc-950/50 py-3 px-4 border-b border-zinc-800 font-bold text-center ${ia.cor} tracking-wider flex items-center justify-between gap-2`}>
-                  <div className="w-5"></div> {/* Espaçador para balancear o visual */}
-                  <div className="flex items-center gap-2">
+            {modelos.filter(ia => iasAtivas[ia.id]).map((ia) => {
+              
+              // Filtra as mensagens para mostrar apenas o User e esta IA específica
+              const mensagensDaColuna = chatMessages.filter(m => m.role === 'user' || m.ia_id === ia.id);
+
+              return (
+                <div key={ia.id} className="flex flex-col bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden h-full shadow-lg">
+                  <div className={`bg-zinc-950/50 py-3 px-4 border-b border-zinc-800 font-bold text-center ${ia.cor} tracking-wider flex items-center justify-center gap-2`}>
                     <Bot className="w-5 h-5 opacity-70" />
                     {ia.nome}
                   </div>
-                  {respostas[ia.id] ? (
-                    <button onClick={() => exportarParaMarkdown(ia.id, ia.nome)} title="Exportar resposta em MD" className="p-1 hover:bg-zinc-800 rounded-md transition-colors text-zinc-400 hover:text-zinc-200">
-                      <Download className="w-4 h-4" />
-                    </button>
-                  ) : (
-                    <div className="w-4"></div>
-                  )}
+                  
+                  {/* Área de rolagem do chat */}
+                  <div className="p-5 overflow-y-auto flex-1 flex flex-col gap-5 scroll-smooth">
+                    {mensagensDaColuna.length === 0 && !loading ? (
+                       <div className="flex flex-col justify-center items-center h-full text-zinc-700 space-y-4">
+                         <Bot className="w-12 h-12 opacity-10" />
+                         <p className="italic text-sm">Aguardando seu comando...</p>
+                       </div>
+                    ) : (
+                      mensagensDaColuna.map((msg) => (
+                        <div key={msg.id} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                          <div className={`p-4 rounded-2xl max-w-[90%] shadow-sm ${msg.role === 'user' ? 'bg-zinc-800 text-zinc-100 rounded-br-none' : 'bg-zinc-950/60 border border-zinc-800 rounded-bl-none text-zinc-300 prose prose-invert prose-pre:bg-zinc-900'}`}>
+                            {msg.role === 'user' ? (
+                              <span className="whitespace-pre-wrap">{msg.content}</span>
+                            ) : (
+                              <ReactMarkdown>{msg.content}</ReactMarkdown>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                    {loading && (
+                      <div className="flex justify-start">
+                        <div className="p-4 rounded-2xl bg-zinc-950/60 border border-zinc-800 rounded-bl-none flex items-center gap-2 text-zinc-500">
+                          <Loader2 className="animate-spin w-5 h-5" />
+                          <span className="text-sm">Pensando...</span>
+                        </div>
+                      </div>
+                    )}
+                    <div ref={messagesEndRef} />
+                  </div>
                 </div>
-                
-                {/* Corpo da Resposta */}
-                <div className="p-5 overflow-y-auto flex-1 text-zinc-300 leading-relaxed scroll-smooth">
-                  {respostas[ia.id] ? (
-                    <div className="prose prose-invert max-w-none prose-pre:bg-zinc-950 prose-pre:border prose-pre:border-zinc-800 prose-pre:rounded-xl">
-                      <ReactMarkdown>
-                        {respostas[ia.id]}
-                      </ReactMarkdown>
-                    </div>
-                  ) : loading ? (
-                    <div className="flex justify-center items-center h-full text-zinc-600">
-                      <Loader2 className="animate-spin w-10 h-10" />
-                    </div>
-                  ) : (
-                    <div className="flex flex-col justify-center items-center h-full text-zinc-700 space-y-4">
-                      <Bot className="w-12 h-12 opacity-10" />
-                      <p className="italic text-sm">Aguardando seu comando...</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </main>
 
-      {/* 4. BARRA DE PROMPT (FOOTER) */}
       <footer className="p-4 bg-zinc-900 border-t border-zinc-800 z-10 shadow-[0_-10px_40px_rgba(0,0,0,0.2)]">
         <form onSubmit={enviarPrompt} className="max-w-6xl mx-auto relative">
           <input
             type="text"
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
-            placeholder={user ? "O que você quer perguntar para as IAs?" : "Faça login para poder enviar prompts e salvar o histórico"}
-            disabled={loading || qtdAtivas === 0 || !user}
+            placeholder="O que você quer perguntar para as IAs?"
+            disabled={loading || qtdAtivas === 0}
             className="w-full bg-zinc-950 border border-zinc-700 rounded-2xl py-4 pl-6 pr-16 focus:outline-none focus:border-green-400 focus:ring-1 focus:ring-green-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-inner text-zinc-100 placeholder:text-zinc-600"
           />
           <button
             type="submit"
-            disabled={loading || !prompt.trim() || qtdAtivas === 0 || !user}
+            disabled={loading || !prompt.trim() || qtdAtivas === 0}
             className="absolute right-2 top-2 bottom-2 bg-green-500 hover:bg-green-400 text-zinc-950 p-3 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center w-12"
           >
             {loading ? <Loader2 className="animate-spin w-5 h-5" /> : <Send className="w-5 h-5" />}

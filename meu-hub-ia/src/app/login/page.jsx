@@ -13,13 +13,20 @@ export default function Login() {
   const router = useRouter();
 
   const handleAuth = async (tipo) => {
+    // Mantive a exigência básica só pra não mandar vazio
     if (!email || !password) {
       setMensagem({ texto: "Preencha e-mail e senha.", tipo: "erro" });
       return;
     }
+    
     setLoading(true);
     setMensagem({ texto: "", tipo: "" });
 
+    // =====================================================================
+    // 1. CÓDIGO REAL DO SUPABASE (COMENTADO COMO SOLICITADO)
+    // Para reativar, basta remover os símbolos de /* e */
+    // =====================================================================
+    /*
     try {
       if (tipo === "registro") {
         const { error } = await supabase.auth.signUp({ email, password });
@@ -36,6 +43,21 @@ export default function Login() {
     } finally {
       setLoading(false);
     }
+    */
+
+    // =====================================================================
+    // 2. MODO DE TESTE FICTÍCIO (SEM VERIFICAÇÃO NENHUMA)
+    // =====================================================================
+    setTimeout(() => {
+      if (tipo === "registro") {
+        setMensagem({ texto: "Conta fictícia aprovada para testes! Agora clique em Entrar.", tipo: "sucesso" });
+      } else {
+        // Finge que fez o login e redireciona
+        router.push("/");
+      }
+      setLoading(false);
+    }, 800); // Um delay de 800ms só pra dar a ilusão de carregamento
+    
   };
 
   return (
@@ -48,7 +70,7 @@ export default function Login() {
             <Bot className="w-10 h-10 text-green-400" />
           </div>
           <h1 className="text-2xl font-bold tracking-wider">HUB DE <span className="text-green-400">IAS</span></h1>
-          <p className="text-zinc-500 text-sm">Acesse para salvar seu histórico</p>
+          <p className="text-zinc-500 text-sm text-center">Modo de Teste<br/>(Verificação Desativada)</p>
         </div>
 
         {/* Mensagens de Feedback */}
@@ -64,7 +86,7 @@ export default function Login() {
             <Mail className="absolute left-3 top-3.5 w-5 h-5 text-zinc-500" />
             <input
               type="email"
-              placeholder="Seu e-mail"
+              placeholder="Digite qualquer e-mail falso"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-3 pl-10 pr-4 focus:outline-none focus:border-green-400 focus:ring-1 focus:ring-green-400 transition-all placeholder:text-zinc-600"
@@ -74,7 +96,7 @@ export default function Login() {
             <Lock className="absolute left-3 top-3.5 w-5 h-5 text-zinc-500" />
             <input
               type="password"
-              placeholder="Sua senha"
+              placeholder="Digite qualquer senha"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-3 pl-10 pr-4 focus:outline-none focus:border-green-400 focus:ring-1 focus:ring-green-400 transition-all placeholder:text-zinc-600"
@@ -87,7 +109,7 @@ export default function Login() {
               disabled={loading}
               className="flex-1 bg-green-500 hover:bg-green-400 text-zinc-950 font-bold py-3 rounded-xl transition-colors disabled:opacity-50 flex justify-center items-center"
             >
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Entrar"}
+              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Entrar Fictício"}
             </button>
             <button
               onClick={() => handleAuth("registro")}
