@@ -5,35 +5,62 @@ import ReactMarkdown from "react-markdown";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Send, Loader2, Bot, Menu, User, X, CheckSquare, Square, LogOut, Download } from "lucide-react";
+import { Send, Loader2, Bot, Menu, User, X, CheckSquare, Square, LogOut, Download, Settings2 } from "lucide-react";
 
 export default function Home() {
   const router = useRouter();
   const [prompt, setPrompt] = useState("");
   const [loading, setLoading] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  
+  // Painéis independentes
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isModelsOpen, setIsModelsOpen] = useState(false);
   
   const [user, setUser] = useState(undefined);
   const [activeChatId, setActiveChatId] = useState(null);
   const [historicoChats, setHistoricoChats] = useState([]);
 
-  // NOVO: Array unificado de mensagens para o chat vertical
-  // Formato: { id, role: 'user' | 'assistant', content: 'texto', ia_id: 'chatgpt' | null }
   const [chatMessages, setChatMessages] = useState([]);
 
-  const [iasAtivas, setIasAtivas] = useState({
-    chatgpt: true,
-    gemini: true,
-    grok: true
-  });
-
+  // Catálogo completo de IAs
+  // Catálogo Expandido de IAs (As 15 Melhores do OpenRouter)
   const modelos = [
-    { id: "chatgpt", nome: "ChatGPT", modeloApi: "openai/gpt-4o-mini", cor: "text-emerald-400" },
-    { id: "gemini", nome: "Gemini", modeloApi: "google/gemini-2.5-flash", cor: "text-blue-400" },
-    { id: "grok", nome: "Grok", modeloApi: "x-ai/grok-4.3", cor: "text-red-400" }
+    { id: "chatgpt", nome: "ChatGPT (GPT-4o Mini)", modeloApi: "openai/gpt-4o-mini", cor: "text-emerald-400" },
+    { id: "gpt4o", nome: "GPT-4o (OpenAI Flagship)", modeloApi: "openai/gpt-4o", cor: "text-emerald-300" },
+    { id: "gemini", nome: "Gemini Flash (Google)", modeloApi: "google/gemini-2.5-flash", cor: "text-blue-400" },
+    { id: "geminipro", nome: "Gemini Pro (Google)", modeloApi: "google/gemini-2.5-pro", cor: "text-blue-300" },
+    { id: "grok", nome: "Grok (xAI)", modeloApi: "x-ai/grok-4.3", cor: "text-red-400" },
+    { id: "claude", nome: "Claude 3 Haiku", modeloApi: "anthropic/claude-3-haiku", cor: "text-amber-400" },
+    { id: "claudesonnet", nome: "Claude 3.5 Sonnet", modeloApi: "anthropic/claude-3.5-sonnet", cor: "text-amber-300" },
+    { id: "llama", nome: "Llama 3.1 (8B)", modeloApi: "meta-llama/llama-3.1-8b-instruct", cor: "text-indigo-400" },
+    { id: "llama70b", nome: "Llama 3.1 (70B)", modeloApi: "meta-llama/llama-3.1-70b-instruct", cor: "text-indigo-300" },
+    { id: "mixtral", nome: "Mixtral 8x7B", modeloApi: "mistralai/mixtral-8x7b-instruct", cor: "text-orange-400" },
+    { id: "deepseek", nome: "DeepSeek Coder", modeloApi: "deepseek/deepseek-coder", cor: "text-cyan-400" },
+    { id: "cohere", nome: "Command R+ (Cohere)", modeloApi: "cohere/command-r-plus", cor: "text-teal-400" },
+    { id: "phi3", nome: "Phi-3 Mini (Microsoft)", modeloApi: "microsoft/phi-3-mini-128k-instruct", cor: "text-sky-400" },
+    { id: "qwen", nome: "Qwen 2 (72B)", modeloApi: "qwen/qwen-2-72b-instruct", cor: "text-purple-400" },
+    { id: "perplexity", nome: "Sonar (Perplexity)", modeloApi: "perplexity/llama-3-sonar-large-32k-chat", cor: "text-sky-300" }
   ];
 
-  // Auto-scroll para o final das mensagens
+  // Controle de IAs ativas
+  const [iasAtivas, setIasAtivas] = useState({
+    chatgpt: true,
+    gpt4o: false,
+    gemini: true,
+    geminipro: false,
+    grok: true,
+    claude: false,
+    claudesonnet: false,
+    llama: false,
+    llama70b: false,
+    mixtral: false,
+    deepseek: false,
+    cohere: false,
+    phi3: false,
+    qwen: false,
+    perplexity: false
+  });
+
   const messagesEndRef = useRef(null);
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -72,10 +99,9 @@ export default function Home() {
     }
   }, [user, carregarListaChats]);
 
-  // Carrega as mensagens na vertical
   const carregarMensagensDoChat = async (chatId) => {
     setActiveChatId(chatId);
-    setIsSidebarOpen(false);
+    setIsHistoryOpen(false);
     setChatMessages([]);
 
     const { data, error } = await supabase
@@ -95,8 +121,18 @@ export default function Home() {
     }
   };
 
+  // Função para adicionar/remover IAs com limite de 3
   const toggleIa = (id) => {
-    setIasAtivas(prev => ({ ...prev, [id]: !prev[id] }));
+    setIasAtivas(prev => {
+      const isAtiva = prev[id];
+      const qtdAtivas = Object.values(prev).filter(Boolean).length;
+
+      if (!isAtiva && qtdAtivas >= 3) {
+        alert("Você já selecionou 3 IAs. Desmarque uma para poder adicionar outra.");
+        return prev;
+      }
+      return { ...prev, [id]: !isAtiva };
+    });
   };
 
   const enviarPrompt = async (e) => {
@@ -107,7 +143,6 @@ export default function Home() {
     const promptAtual = prompt;
     setPrompt("");
 
-    // 1. Adiciona a mensagem do usuário na tela instantaneamente
     const novoUserMsg = { id: Date.now().toString(), role: "user", content: promptAtual, ia_id: null };
     setChatMessages(prev => [...prev, novoUserMsg]);
 
@@ -138,7 +173,6 @@ export default function Home() {
 
     const promessas = modelosAtivos.map(async (ia) => {
       try {
-        // Prepara o histórico específico desta IA + a nova pergunta
         const historicoIA = chatMessages
           .filter(m => m.role === "user" || m.ia_id === ia.id)
           .map(m => ({ role: m.role, content: m.content }));
@@ -154,7 +188,6 @@ export default function Home() {
         const data = await res.json();
         const respostaTexto = data.text || data.error || "Erro ao gerar resposta.";
         
-        // 2. Adiciona a resposta da IA na tela
         const novaIAMsg = { id: Math.random().toString(), role: "assistant", content: respostaTexto, ia_id: ia.id };
         setChatMessages(prev => [...prev, novaIAMsg]);
 
@@ -190,9 +223,10 @@ export default function Home() {
   return (
     <div className="flex flex-col h-screen bg-zinc-950 text-zinc-100 font-sans overflow-hidden">
       
+      {/* HEADER */}
       <header className="px-4 py-3 border-b border-zinc-800 bg-zinc-900 flex items-center justify-between z-10 shadow-md">
         <div className="flex items-center gap-4">
-          <button onClick={() => setIsSidebarOpen(true)} className="p-2 hover:bg-zinc-800 rounded-md transition-colors text-zinc-300">
+          <button onClick={() => setIsHistoryOpen(true)} className="p-2 hover:bg-zinc-800 rounded-md transition-colors text-zinc-300" title="Histórico de Conversas">
             <Menu className="w-6 h-6" />
           </button>
           <div className="flex items-center gap-2">
@@ -206,64 +240,64 @@ export default function Home() {
           )}
         </div>
         
-        {user === undefined ? (
-          <div className="w-24 h-8 bg-zinc-800 animate-pulse rounded-full"></div>
-        ) : user ? (
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-zinc-400 hidden md:inline max-w-[150px] truncate">{user.email}</span>
-            <button onClick={handleLogout} className="flex items-center gap-2 bg-red-950/40 hover:bg-red-900/40 border border-red-900/30 text-red-400 px-4 py-2 rounded-full transition-colors text-sm font-semibold">
-              <LogOut className="w-4 h-4" />
-              <span>Sair</span>
-            </button>
-          </div>
-        ) : (
-          <Link href="/login" className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 px-4 py-2 rounded-full transition-colors border border-zinc-700 shadow-sm">
-            <User className="w-4 h-4 text-green-400" />
-            <span className="text-sm font-semibold tracking-wide">Login</span>
-          </Link>
-        )}
+        <div className="flex items-center gap-4">
+          {/* NOVO: Botão de Configurar IAs direto no Header */}
+          <button 
+            onClick={() => setIsModelsOpen(true)} 
+            className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 px-4 py-2 rounded-full transition-colors border border-zinc-700 text-zinc-300"
+          >
+            <Settings2 className="w-4 h-4" />
+            <span className="text-sm font-semibold hidden md:block">IAs Ativas ({qtdAtivas}/3)</span>
+          </button>
+
+          <div className="h-6 w-px bg-zinc-800 hidden md:block"></div>
+
+          {user === undefined ? (
+            <div className="w-24 h-8 bg-zinc-800 animate-pulse rounded-full"></div>
+          ) : user ? (
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-zinc-400 hidden lg:inline max-w-[150px] truncate">{user.email}</span>
+              <button onClick={handleLogout} className="flex items-center gap-2 bg-red-950/40 hover:bg-red-900/40 border border-red-900/30 text-red-400 px-4 py-2 rounded-full transition-colors text-sm font-semibold">
+                <LogOut className="w-4 h-4" />
+                <span className="hidden sm:inline">Sair</span>
+              </button>
+            </div>
+          ) : (
+            <Link href="/login" className="flex items-center gap-2 bg-green-500 hover:bg-green-400 px-4 py-2 rounded-full transition-colors text-zinc-950 shadow-sm">
+              <User className="w-4 h-4" />
+              <span className="text-sm font-bold tracking-wide">Login</span>
+            </Link>
+          )}
+        </div>
       </header>
 
-      {isSidebarOpen && (
+      {/* PAINEL ESQUERDO: HISTÓRICO DE CHATS */}
+      {isHistoryOpen && (
         <div className="absolute inset-0 z-50 flex">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => setIsSidebarOpen(false)}></div>
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => setIsHistoryOpen(false)}></div>
           <div className="relative w-80 bg-zinc-900 border-r border-zinc-800 h-full p-6 shadow-2xl flex flex-col">
             <div className="flex justify-between items-center mb-6 pb-4 border-b border-zinc-800">
-              <h2 className="text-lg font-bold tracking-wide">Painel de Controle</h2>
-              <button onClick={() => setIsSidebarOpen(false)} className="p-1 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 rounded-md transition-colors">
+              <h2 className="text-lg font-bold tracking-wide">Seu Histórico</h2>
+              <button onClick={() => setIsHistoryOpen(false)} className="p-1 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 rounded-md transition-colors">
                 <X className="w-6 h-6" />
               </button>
             </div>
             
-            <div className="mb-6">
-              <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3">Modelos na Tela</h3>
-              <div className="flex flex-col gap-2">
-                {modelos.map(ia => (
-                  <button 
-                    key={ia.id}
-                    onClick={() => toggleIa(ia.id)}
-                    className="flex items-center gap-3 p-3 rounded-xl border border-zinc-800/60 bg-zinc-950/40 hover:bg-zinc-800 transition-all text-left group text-sm"
-                  >
-                    {iasAtivas[ia.id] ? <CheckSquare className="text-green-400 w-4 h-4 flex-shrink-0" /> : <Square className="text-zinc-600 group-hover:text-zinc-400 w-4 h-4 flex-shrink-0" />}
-                    <span className={`font-medium ${ia.cor}`}>{ia.nome}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto border-t border-zinc-800/80 pt-4 flex flex-col">
-              <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3">Histórico de Conversas</h3>
+            <div className="flex-1 overflow-y-auto pr-1">
               {!user ? (
-                <p className="text-xs text-zinc-600 italic text-center my-4">Faça login para salvar e ver o histórico.</p>
+                <div className="text-center mt-10">
+                  <Bot className="w-12 h-12 text-zinc-700 mx-auto mb-3" />
+                  <p className="text-sm text-zinc-500">Faça login para salvar seus chats automaticamente.</p>
+                </div>
               ) : historicoChats.length === 0 ? (
-                <p className="text-xs text-zinc-600 italic text-center my-4">Nenhum chat salvo ainda.</p>
+                <p className="text-sm text-zinc-600 italic text-center my-4">Nenhum chat salvo ainda.</p>
               ) : (
-                <div className="flex flex-col gap-1.5 overflow-y-auto pr-1 flex-1">
+                <div className="flex flex-col gap-2">
                   {historicoChats.map((chat) => (
                     <button
                       key={chat.id}
                       onClick={() => carregarMensagensDoChat(chat.id)}
-                      className={`text-left p-3 rounded-xl text-sm transition-all truncate border ${activeChatId === chat.id ? "bg-green-500/10 border-green-500/30 text-green-400 font-medium" : "bg-zinc-950/20 border-transparent hover:bg-zinc-800/50 text-zinc-400"}`}
+                      className={`text-left p-3 rounded-xl text-sm transition-all truncate border ${activeChatId === chat.id ? "bg-green-500/10 border-green-500/30 text-green-400 font-medium" : "bg-zinc-950/20 border-zinc-800/50 hover:bg-zinc-800 text-zinc-400"}`}
                     >
                       {chat.titulo}
                     </button>
@@ -275,17 +309,56 @@ export default function Home() {
         </div>
       )}
 
+      {/* PAINEL DIREITO: SELEÇÃO DE IAs */}
+      {isModelsOpen && (
+        <div className="absolute inset-0 z-50 flex justify-end">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => setIsModelsOpen(false)}></div>
+          <div className="relative w-80 bg-zinc-900 border-l border-zinc-800 h-full p-6 shadow-2xl flex flex-col">
+            <div className="flex justify-between items-center mb-6 pb-4 border-b border-zinc-800">
+              <div>
+                <h2 className="text-lg font-bold tracking-wide">Catálogo de IAs</h2>
+                <p className="text-xs text-zinc-500 mt-1">Selecione até 3 modelos</p>
+              </div>
+              <button onClick={() => setIsModelsOpen(false)} className="p-1 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 rounded-md transition-colors">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto pr-2">
+              <div className="flex flex-col gap-3">
+                {modelos.map(ia => (
+                  <button 
+                    key={ia.id}
+                    onClick={() => toggleIa(ia.id)}
+                    className={`flex items-center justify-between p-4 rounded-xl border transition-all text-left group text-sm ${iasAtivas[ia.id] ? "border-green-500/50 bg-green-500/10" : "border-zinc-800/60 bg-zinc-950/40 hover:bg-zinc-800"}`}
+                  >
+                    <span className={`font-semibold ${ia.cor}`}>{ia.nome}</span>
+                    {iasAtivas[ia.id] ? <CheckSquare className="text-green-400 w-5 h-5 flex-shrink-0" /> : <Square className="text-zinc-600 group-hover:text-zinc-400 w-5 h-5 flex-shrink-0" />}
+                  </button>
+                ))}
+              </div>
+            </div>
+            
+            <button onClick={() => setIsModelsOpen(false)} className="mt-4 w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-bold py-3 rounded-xl transition-colors">
+              Pronto
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ÁREA PRINCIPAL (CHATS) */}
       <main className="flex-1 overflow-hidden p-4">
         {qtdAtivas === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-zinc-500 gap-4">
-            <Bot className="w-16 h-16 opacity-30" />
-            <p className="text-lg font-medium">Abra o menu lateral e selecione pelo menos uma IA.</p>
+            <Settings2 className="w-16 h-16 opacity-30" />
+            <p className="text-lg font-medium">Abra o menu superior direito e escolha as IAs.</p>
+            <button onClick={() => setIsModelsOpen(true)} className="px-6 py-3 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-zinc-200 font-medium transition-colors">
+              Escolher Modelos
+            </button>
           </div>
         ) : (
           <div className={`grid ${gridCols} gap-4 h-full`}>
             {modelos.filter(ia => iasAtivas[ia.id]).map((ia) => {
-              
-              // Filtra as mensagens para mostrar apenas o User e esta IA específica
               const mensagensDaColuna = chatMessages.filter(m => m.role === 'user' || m.ia_id === ia.id);
 
               return (
@@ -295,12 +368,11 @@ export default function Home() {
                     {ia.nome}
                   </div>
                   
-                  {/* Área de rolagem do chat */}
                   <div className="p-5 overflow-y-auto flex-1 flex flex-col gap-5 scroll-smooth">
                     {mensagensDaColuna.length === 0 && !loading ? (
                        <div className="flex flex-col justify-center items-center h-full text-zinc-700 space-y-4">
                          <Bot className="w-12 h-12 opacity-10" />
-                         <p className="italic text-sm">Aguardando seu comando...</p>
+                         <p className="italic text-sm">Pronto para responder...</p>
                        </div>
                     ) : (
                       mensagensDaColuna.map((msg) => (
@@ -319,7 +391,7 @@ export default function Home() {
                       <div className="flex justify-start">
                         <div className="p-4 rounded-2xl bg-zinc-950/60 border border-zinc-800 rounded-bl-none flex items-center gap-2 text-zinc-500">
                           <Loader2 className="animate-spin w-5 h-5" />
-                          <span className="text-sm">Pensando...</span>
+                          <span className="text-sm">Processando...</span>
                         </div>
                       </div>
                     )}
@@ -332,6 +404,7 @@ export default function Home() {
         )}
       </main>
 
+      {/* FOOTER */}
       <footer className="p-4 bg-zinc-900 border-t border-zinc-800 z-10 shadow-[0_-10px_40px_rgba(0,0,0,0.2)]">
         <form onSubmit={enviarPrompt} className="max-w-6xl mx-auto relative">
           <input
