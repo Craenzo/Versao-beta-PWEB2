@@ -17,6 +17,7 @@ export default function Home() {
   const [isModelsOpen, setIsModelsOpen] = useState(false);
   
   const [user, setUser] = useState(undefined);
+  console.log("USUARIO:", user);
   const [activeChatId, setActiveChatId] = useState(null);
   const [historicoChats, setHistoricoChats] = useState([]);
 
@@ -155,6 +156,9 @@ export default function Home() {
         .insert([{ user_id: user.id, titulo: tituloGerado }])
         .select()
         .single();
+
+      console.log("CHAT CRIADO:", novoChat);
+      console.log("ERRO CHAT:", erroChat);
 
       if (!erroChat && novoChat) {
         chatId = novoChat.id;
