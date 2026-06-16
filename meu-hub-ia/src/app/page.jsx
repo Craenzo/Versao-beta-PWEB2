@@ -5,14 +5,16 @@ import ReactMarkdown from "react-markdown";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Send, Loader2, Bot, Menu, User, X, CheckSquare, Square, LogOut, Download, Settings2 } from "lucide-react";
+import { 
+  Send, Loader2, Bot, Menu, User, X, CheckSquare, Square, 
+  LogOut, Download, Settings2, Edit2, Check, RotateCcw 
+} from "lucide-react";
 
 export default function Home() {
   const router = useRouter();
   const [prompt, setPrompt] = useState("");
   const [loading, setLoading] = useState(false);
-  
-  // Painéis independentes
+
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isModelsOpen, setIsModelsOpen] = useState(false);
   
@@ -23,8 +25,13 @@ export default function Home() {
 
   const [chatMessages, setChatMessages] = useState([]);
 
-  // Catálogo completo de IAs
-  // Catálogo Expandido de IAs (As 15 Melhores do OpenRouter)
+  // ESTADOS PARA EDITAR OS NOMES DAS IAS 
+  const [customNames, setCustomNames] = useState({});
+  const [editingId, setEditingId] = useState(null);
+  const [tempName, setTempName] = useState("");
+
+  
+  // 15 melhores do OpenRouter
   const modelos = [
     { id: "chatgpt", nome: "ChatGPT (GPT-4o Mini)", modeloApi: "openai/gpt-4o-mini", cor: "text-emerald-400" },
     { id: "gpt4o", nome: "GPT-4o (OpenAI Flagship)", modeloApi: "openai/gpt-4o", cor: "text-emerald-300" },
@@ -120,6 +127,28 @@ export default function Home() {
       }));
       setChatMessages(formatadas);
     }
+  };
+
+  // Funções para gerenciar alteração de nome das IAs
+  const iniciarEdicao = (id, nomeAtual) => {
+    setEditingId(id);
+    setTempName(customNames[id] || nomeAtual);
+  };
+
+  const salvarNome = (id) => {
+    if (tempName.trim()) {
+      setCustomNames(prev => ({ ...prev, [id]: tempName.trim() }));
+    }
+    setEditingId(null);
+  };
+
+  // Função para resetar o nome customizado
+  const resetarNome = (id) => {
+    setCustomNames(prev => {
+      const novosNomes = { ...prev };
+      delete novosNomes[id];
+      return novosNomes;
+    });
   };
 
   // Função para adicionar/remover IAs com limite de 3
@@ -245,7 +274,6 @@ export default function Home() {
         </div>
         
         <div className="flex items-center gap-4">
-          {/* NOVO: Botão de Configurar IAs direto no Header */}
           <button 
             onClick={() => setIsModelsOpen(true)} 
             className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 px-4 py-2 rounded-full transition-colors border border-zinc-700 text-zinc-300"
@@ -275,7 +303,7 @@ export default function Home() {
         </div>
       </header>
 
-      {/* PAINEL ESQUERDO: HISTÓRICO DE CHATS */}
+      {/* HISTÓRICO DE CHATS */}
       {isHistoryOpen && (
         <div className="absolute inset-0 z-50 flex">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => setIsHistoryOpen(false)}></div>
@@ -313,7 +341,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* PAINEL DIREITO: SELEÇÃO DE IAs */}
+      {/*SELEÇÃO DE IAs */}
       {isModelsOpen && (
         <div className="absolute inset-0 z-50 flex justify-end">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => setIsModelsOpen(false)}></div>
@@ -350,7 +378,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* ÁREA PRINCIPAL (CHATS) */}
+      {/* ÁREA PRINCIPAL */}
       <main className="flex-1 overflow-hidden p-4">
         {qtdAtivas === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-zinc-500 gap-4">
@@ -364,12 +392,65 @@ export default function Home() {
           <div className={`grid ${gridCols} gap-4 h-full`}>
             {modelos.filter(ia => iasAtivas[ia.id]).map((ia) => {
               const mensagensDaColuna = chatMessages.filter(m => m.role === 'user' || m.ia_id === ia.id);
+              const nomeExibido = customNames[ia.id] || ia.nome;
 
               return (
-                <div key={ia.id} className="flex flex-col bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden h-full shadow-lg">
-                  <div className={`bg-zinc-950/50 py-3 px-4 border-b border-zinc-800 font-bold text-center ${ia.cor} tracking-wider flex items-center justify-center gap-2`}>
-                    <Bot className="w-5 h-5 opacity-70" />
-                    {ia.nome}
+                <div key={ia.id} className="flex flex-col bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden h-full shadow-lg group">
+                  
+                  {/* HEADER INDIVIDUAL DA COLUNA DA IA */}
+                  <div className={`bg-zinc-950/50 py-3 px-4 border-b border-zinc-800 font-bold text-center ${ia.cor} tracking-wider flex items-center justify-between gap-2 h-12`}>
+                    <div className="flex items-center gap-2 truncate flex-1 justify-center pl-6">
+                      <Bot className="w-5 h-5 opacity-70 flex-shrink-0" />
+                      {editingId === ia.id ? (
+                        <input
+                          type="text"
+                          value={tempName}
+                          onChange={(e) => setTempName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") salvarNome(ia.id);
+                            if (e.key === "Escape") setEditingId(null);
+                          }}
+                          className="bg-zinc-800 text-zinc-100 px-2 py-0.5 rounded text-xs border border-green-500 focus:outline-none w-full max-w-[140px] text-center font-normal"
+                          autoFocus
+                          maxLength={25}
+                        />
+                      ) : (
+                        <span className="truncate">{nomeExibido}</span>
+                      )}
+                    </div>
+                    
+                    <div className="flex items-center justify-end gap-1">
+                      {editingId === ia.id ? (
+                        <button 
+                          type="button"
+                          onClick={() => salvarNome(ia.id)} 
+                          className="text-green-400 hover:text-green-300 p-1 rounded transition-colors"
+                        >
+                          <Check className="w-4 h-4" />
+                        </button>
+                      ) : (
+                        <>
+                          {customNames[ia.id] && (
+                            <button 
+                              type="button"
+                              onClick={() => resetarNome(ia.id)} 
+                              className="text-red-500 hover:text-red-400 p-1 rounded transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
+                              title="Resetar nome original"
+                            >
+                              <RotateCcw className="w-4 h-4" />
+                            </button>
+                          )}
+                          <button 
+                            type="button"
+                            onClick={() => iniciarEdicao(ia.id, ia.nome)} 
+                            className="text-zinc-500 hover:text-zinc-300 p-1 rounded transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
+                            title="Editar nome da IA"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
                   
                   <div className="p-5 overflow-y-auto flex-1 flex flex-col gap-5 scroll-smooth">
