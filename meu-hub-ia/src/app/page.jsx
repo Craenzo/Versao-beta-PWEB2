@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { 
   Send, Loader2, Bot, Menu, User, X, CheckSquare, Square, 
-  LogOut, Settings2, Edit2, Check, RotateCcw 
+  LogOut, Settings2, Edit2, Check, Trash2 
 } from "lucide-react";
 
 export default function Home() {
@@ -23,38 +23,35 @@ export default function Home() {
   const [historicoChats, setHistoricoChats] = useState([]);
   const [chatMessages, setChatMessages] = useState([]);
 
-  // Estados para editar os nomes das IAs
-  const [customNames, setCustomNames] = useState({});
-  const [editingId, setEditingId] = useState(null);
-  const [tempName, setTempName] = useState("");
+  // Estados para editar nomes das conversas
+  const [editingChatId, setEditingChatId] = useState(null);
+  const [tempChatName, setTempChatName] = useState("");
 
+  // Modelos ativos — Groq + Gemini + Mistral
   const modelos = [
     // --- Groq ---
-    { id: "llama33_70b",      nome: "ChatGPT 4.0",        modeloApi: "llama-3.3-70b-versatile",                     cor: "text-emerald-400", provider: "Groq"    },
-    { id: "llama31_8b",       nome: "Llama 3.1 8B",         modeloApi: "llama-3.1-8b-instant",                        cor: "text-blue-400",    provider: "Groq"    },
-    { id: "llama4_scout",     nome: "GROK",         modeloApi: "meta-llama/llama-4-scout-17b-16e-instruct",    cor: "text-indigo-400",  provider: "Groq"    },
-    { id: "qwen3_32b",        nome: "Qwen 3 32B",            modeloApi: "qwen/qwen3-32b",                              cor: "text-cyan-400",    provider: "Groq"    },
+    { id: "llama33_70b",  nome: "ChatGPT 4.0",        modeloApi: "llama-3.3-70b-versatile",                  cor: "text-emerald-400", provider: "Groq"    },
+    { id: "llama31_8b",   nome: "Llama 3.1 8B",       modeloApi: "llama-3.1-8b-instant",                     cor: "text-blue-400",    provider: "Groq"    },
+    { id: "llama4_scout", nome: "GROK",                modeloApi: "meta-llama/llama-4-scout-17b-16e-instruct", cor: "text-indigo-400",  provider: "Groq"    },
+    { id: "qwen3_32b",    nome: "Qwen 3 32B",         modeloApi: "qwen/qwen3-32b",                           cor: "text-cyan-400",    provider: "Groq"    },
     // --- Gemini ---
-    { id: "gemini_flash",     nome: "Gemini 2.5 Flash",      modeloApi: "gemini-2.5-flash",                            cor: "text-yellow-400",  provider: "Gemini"  },
+    { id: "gemini_flash", nome: "Gemini 2.5 Flash",   modeloApi: "gemini-2.5-flash",                         cor: "text-yellow-400",  provider: "Gemini"  },
     // --- Mistral ---
-    { id: "mistral_large",    nome: "Mistral Large",         modeloApi: "mistral-large-latest",                        cor: "text-pink-400",    provider: "Mistral" },
-    { id: "mistral_nemo",     nome: "Mistral Nemo",          modeloApi: "open-mistral-nemo",                           cor: "text-fuchsia-400", provider: "Mistral" },
-    { id: "codestral",        nome: "Codestral (Código)",    modeloApi: "codestral-latest",                            cor: "text-violet-400",  provider: "Mistral" },
+    { id: "mistral_large",nome: "Mistral Large",      modeloApi: "mistral-large-latest",                     cor: "text-pink-400",    provider: "Mistral" },
+    { id: "mistral_nemo", nome: "Mistral Nemo",       modeloApi: "open-mistral-nemo",                        cor: "text-fuchsia-400", provider: "Mistral" },
+    { id: "codestral",    nome: "Codestral (Código)", modeloApi: "codestral-latest",                         cor: "text-violet-400",  provider: "Mistral" },
   ];
 
   // IDs que ficam ativos por padrão (1 de cada provider)
   const [iasAtivas, setIasAtivas] = useState({
-    llama33_70b:     true,
-    llama31_8b:      false,
-    llama4_scout:    false,
-    llama4_maverick: false,
-    qwen3_32b:       false,
-    kimi_k2:         false,
-    gemini_flash:    true,
-    mistral_small:   false,
-    mistral_large:   true,
-    mistral_nemo:    false,
-    codestral:       false,
+    llama33_70b:  true,
+    llama31_8b:   false,
+    llama4_scout: false,
+    qwen3_32b:    false,
+    gemini_flash: true,
+    mistral_large:true,
+    mistral_nemo: false,
+    codestral:    false,
   });
 
   const messagesEndRef = useRef(null);
@@ -117,24 +114,24 @@ export default function Home() {
     }
   };
 
-  const iniciarEdicao = (id, nomeAtual) => {
-    setEditingId(id);
-    setTempName(customNames[id] || nomeAtual);
+  const iniciarEdicaoChat = (chat) => {
+    setEditingChatId(chat.id);
+    setTempChatName(chat.titulo);
   };
 
-  const salvarNome = (id) => {
-    if (tempName.trim()) {
-      setCustomNames(prev => ({ ...prev, [id]: tempName.trim() }));
-    }
-    setEditingId(null);
+  const salvarNomeChat = async (chatId) => {
+    if (!tempChatName.trim()) { setEditingChatId(null); return; }
+    await supabase.from("chats").update({ titulo: tempChatName.trim() }).eq("id", chatId);
+    setEditingChatId(null);
+    carregarListaChats(user.id);
   };
 
-  const resetarNome = (id) => {
-    setCustomNames(prev => {
-      const novosNomes = { ...prev };
-      delete novosNomes[id];
-      return novosNomes;
-    });
+  const deletarChat = async (e, chatId) => {
+    e.stopPropagation();
+    await supabase.from("mensagens").delete().eq("chat_id", chatId);
+    await supabase.from("chats").delete().eq("id", chatId);
+    if (activeChatId === chatId) novaConversa();
+    carregarListaChats(user.id);
   };
 
   const toggleIa = (id) => {
@@ -308,13 +305,44 @@ export default function Home() {
               ) : (
                 <div className="flex flex-col gap-2">
                   {historicoChats.map((chat) => (
-                    <button
-                      key={chat.id}
-                      onClick={() => carregarMensagensDoChat(chat.id)}
-                      className={`text-left p-3 rounded-xl text-sm transition-all truncate border ${activeChatId === chat.id ? "bg-green-500/10 border-green-500/30 text-green-400 font-medium" : "bg-zinc-950/20 border-zinc-800/50 hover:bg-zinc-800 text-zinc-400"}`}
-                    >
-                      {chat.titulo}
-                    </button>
+                    <div key={chat.id} className={`group flex items-center gap-1 rounded-xl border ${activeChatId === chat.id ? "bg-green-500/10 border-green-500/30" : "bg-zinc-950/20 border-zinc-800/50 hover:bg-zinc-800"}`}>
+                      {editingChatId === chat.id ? (
+                        <div className="flex items-center gap-1 flex-1 p-2">
+                          <input
+                            type="text"
+                            value={tempChatName}
+                            onChange={(e) => setTempChatName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") salvarNomeChat(chat.id);
+                              if (e.key === "Escape") setEditingChatId(null);
+                            }}
+                            className="flex-1 bg-zinc-800 text-zinc-100 px-2 py-1 rounded text-xs border border-green-500 focus:outline-none"
+                            autoFocus
+                            maxLength={40}
+                          />
+                          <button type="button" onClick={() => salvarNomeChat(chat.id)} className="text-green-400 hover:text-green-300 p-1 rounded">
+                            <Check className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => carregarMensagensDoChat(chat.id)}
+                            className={`flex-1 text-left p-3 text-sm truncate ${activeChatId === chat.id ? "text-green-400 font-medium" : "text-zinc-400"}`}
+                          >
+                            {chat.titulo}
+                          </button>
+                          <div className="flex items-center gap-0.5 pr-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button type="button" onClick={() => iniciarEdicaoChat(chat)} className="text-zinc-500 hover:text-zinc-300 p-1 rounded" title="Renomear">
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button type="button" onClick={(e) => deletarChat(e, chat.id)} className="text-zinc-500 hover:text-red-400 p-1 rounded" title="Apagar conversa">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
                   ))}
                 </div>
               )}
@@ -374,66 +402,14 @@ export default function Home() {
           <div className={`grid ${gridCols} gap-4 h-full`}>
             {modelos.filter(ia => iasAtivas[ia.id]).map((ia) => {
               const mensagensDaColuna = chatMessages.filter(m => m.role === 'user' || m.ia_id === ia.id);
-              const nomeExibido = customNames[ia.id] || ia.nome;
-
               return (
                 <div key={ia.id} className="flex flex-col bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden h-full shadow-lg group">
                   
                   {/* HEADER INDIVIDUAL DA COLUNA DA IA */}
-                  <div className={`bg-zinc-950/50 py-3 px-4 border-b border-zinc-800 font-bold text-center ${ia.cor} tracking-wider flex items-center justify-between gap-2 h-12`}>
-                    <div className="flex items-center gap-2 truncate flex-1 justify-center pl-6">
-                      <Bot className="w-5 h-5 opacity-70 flex-shrink-0" />
-                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border flex-shrink-0 ${ia.provider === "Gemini" ? "border-yellow-500/40 text-yellow-400 bg-yellow-500/10" : ia.provider === "Mistral" ? "border-rose-500/40 text-rose-400 bg-rose-500/10" : "border-zinc-600 text-zinc-400 bg-zinc-800"}`}>{ia.provider}</span>
-                      {editingId === ia.id ? (
-                        <input
-                          type="text"
-                          value={tempName}
-                          onChange={(e) => setTempName(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") salvarNome(ia.id);
-                            if (e.key === "Escape") setEditingId(null);
-                          }}
-                          className="bg-zinc-800 text-zinc-100 px-2 py-0.5 rounded text-xs border border-green-500 focus:outline-none w-full max-w-[140px] text-center font-normal"
-                          autoFocus
-                          maxLength={25}
-                        />
-                      ) : (
-                        <span className="truncate">{nomeExibido}</span>
-                      )}
-                    </div>
-                    
-                    <div className="flex items-center justify-end gap-1">
-                      {editingId === ia.id ? (
-                        <button 
-                          type="button"
-                          onClick={() => salvarNome(ia.id)} 
-                          className="text-green-400 hover:text-green-300 p-1 rounded transition-colors"
-                        >
-                          <Check className="w-4 h-4" />
-                        </button>
-                      ) : (
-                        <>
-                          {customNames[ia.id] && (
-                            <button 
-                              type="button"
-                              onClick={() => resetarNome(ia.id)} 
-                              className="text-red-500 hover:text-red-400 p-1 rounded transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
-                              title="Resetar nome original"
-                            >
-                              <RotateCcw className="w-4 h-4" />
-                            </button>
-                          )}
-                          <button 
-                            type="button"
-                            onClick={() => iniciarEdicao(ia.id, ia.nome)} 
-                            className="text-zinc-500 hover:text-zinc-300 p-1 rounded transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
-                            title="Editar nome da IA"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                        </>
-                      )}
-                    </div>
+                  <div className={`bg-zinc-950/50 py-3 px-4 border-b border-zinc-800 font-bold text-center ${ia.cor} tracking-wider flex items-center justify-center gap-2 h-12`}>
+                    <Bot className="w-5 h-5 opacity-70 flex-shrink-0" />
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border flex-shrink-0 ${ia.provider === "Gemini" ? "border-yellow-500/40 text-yellow-400 bg-yellow-500/10" : ia.provider === "Mistral" ? "border-rose-500/40 text-rose-400 bg-rose-500/10" : "border-zinc-600 text-zinc-400 bg-zinc-800"}`}>{ia.provider}</span>
+                    <span className="truncate">{ia.nome}</span>
                   </div>
                   
                   <div className="p-5 overflow-y-auto flex-1 flex flex-col gap-5 scroll-smooth">
