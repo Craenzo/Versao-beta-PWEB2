@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { 
   Send, Loader2, Bot, Menu, User, X, CheckSquare, Square, 
-  LogOut, Download, Settings2, Edit2, Check, RotateCcw 
+  LogOut, Settings2, Edit2, Check, RotateCcw 
 } from "lucide-react";
 
 export default function Home() {
@@ -19,54 +19,42 @@ export default function Home() {
   const [isModelsOpen, setIsModelsOpen] = useState(false);
   
   const [user, setUser] = useState(undefined);
-  console.log("USUARIO:", user);
   const [activeChatId, setActiveChatId] = useState(null);
   const [historicoChats, setHistoricoChats] = useState([]);
-
   const [chatMessages, setChatMessages] = useState([]);
 
-  // ESTADOS PARA EDITAR OS NOMES DAS IAS 
+  // Estados para editar os nomes das IAs
   const [customNames, setCustomNames] = useState({});
   const [editingId, setEditingId] = useState(null);
   const [tempName, setTempName] = useState("");
 
-  
-  // 15 melhores do OpenRouter
   const modelos = [
-    { id: "chatgpt", nome: "ChatGPT (GPT-4o Mini)", modeloApi: "openai/gpt-4o-mini", cor: "text-emerald-400" },
-    { id: "gpt4o", nome: "GPT-4o (OpenAI Flagship)", modeloApi: "openai/gpt-4o", cor: "text-emerald-300" },
-    { id: "gemini", nome: "Gemini Flash (Google)", modeloApi: "google/gemini-2.5-flash", cor: "text-blue-400" },
-    { id: "geminipro", nome: "Gemini Pro (Google)", modeloApi: "google/gemini-2.5-pro", cor: "text-blue-300" },
-    { id: "grok", nome: "Grok (xAI)", modeloApi: "x-ai/grok-4.3", cor: "text-red-400" },
-    { id: "claude", nome: "Claude 3 Haiku", modeloApi: "anthropic/claude-3-haiku", cor: "text-amber-400" },
-    { id: "claudesonnet", nome: "Claude 3.5 Sonnet", modeloApi: "anthropic/claude-3.5-sonnet", cor: "text-amber-300" },
-    { id: "llama", nome: "Llama 3.1 (8B)", modeloApi: "meta-llama/llama-3.1-8b-instruct", cor: "text-indigo-400" },
-    { id: "llama70b", nome: "Llama 3.1 (70B)", modeloApi: "meta-llama/llama-3.1-70b-instruct", cor: "text-indigo-300" },
-    { id: "mixtral", nome: "Mixtral 8x7B", modeloApi: "mistralai/mixtral-8x7b-instruct", cor: "text-orange-400" },
-    { id: "deepseek", nome: "DeepSeek Coder", modeloApi: "deepseek/deepseek-coder", cor: "text-cyan-400" },
-    { id: "cohere", nome: "Command R+ (Cohere)", modeloApi: "cohere/command-r-plus", cor: "text-teal-400" },
-    { id: "phi3", nome: "Phi-3 Mini (Microsoft)", modeloApi: "microsoft/phi-3-mini-128k-instruct", cor: "text-sky-400" },
-    { id: "qwen", nome: "Qwen 2 (72B)", modeloApi: "qwen/qwen-2-72b-instruct", cor: "text-purple-400" },
-    { id: "perplexity", nome: "Sonar (Perplexity)", modeloApi: "perplexity/llama-3-sonar-large-32k-chat", cor: "text-sky-300" }
+    // --- Groq ---
+    { id: "llama33_70b",      nome: "ChatGPT 4.0",        modeloApi: "llama-3.3-70b-versatile",                     cor: "text-emerald-400", provider: "Groq"    },
+    { id: "llama31_8b",       nome: "Llama 3.1 8B",         modeloApi: "llama-3.1-8b-instant",                        cor: "text-blue-400",    provider: "Groq"    },
+    { id: "llama4_scout",     nome: "GROK",         modeloApi: "meta-llama/llama-4-scout-17b-16e-instruct",    cor: "text-indigo-400",  provider: "Groq"    },
+    { id: "qwen3_32b",        nome: "Qwen 3 32B",            modeloApi: "qwen/qwen3-32b",                              cor: "text-cyan-400",    provider: "Groq"    },
+    // --- Gemini ---
+    { id: "gemini_flash",     nome: "Gemini 2.5 Flash",      modeloApi: "gemini-2.5-flash",                            cor: "text-yellow-400",  provider: "Gemini"  },
+    // --- Mistral ---
+    { id: "mistral_large",    nome: "Mistral Large",         modeloApi: "mistral-large-latest",                        cor: "text-pink-400",    provider: "Mistral" },
+    { id: "mistral_nemo",     nome: "Mistral Nemo",          modeloApi: "open-mistral-nemo",                           cor: "text-fuchsia-400", provider: "Mistral" },
+    { id: "codestral",        nome: "Codestral (Código)",    modeloApi: "codestral-latest",                            cor: "text-violet-400",  provider: "Mistral" },
   ];
 
-  // Controle de IAs ativas
+  // IDs que ficam ativos por padrão (1 de cada provider)
   const [iasAtivas, setIasAtivas] = useState({
-    chatgpt: true,
-    gpt4o: false,
-    gemini: true,
-    geminipro: false,
-    grok: true,
-    claude: false,
-    claudesonnet: false,
-    llama: false,
-    llama70b: false,
-    mixtral: false,
-    deepseek: false,
-    cohere: false,
-    phi3: false,
-    qwen: false,
-    perplexity: false
+    llama33_70b:     true,
+    llama31_8b:      false,
+    llama4_scout:    false,
+    llama4_maverick: false,
+    qwen3_32b:       false,
+    kimi_k2:         false,
+    gemini_flash:    true,
+    mistral_small:   false,
+    mistral_large:   true,
+    mistral_nemo:    false,
+    codestral:       false,
   });
 
   const messagesEndRef = useRef(null);
@@ -129,7 +117,6 @@ export default function Home() {
     }
   };
 
-  // Funções para gerenciar alteração de nome das IAs
   const iniciarEdicao = (id, nomeAtual) => {
     setEditingId(id);
     setTempName(customNames[id] || nomeAtual);
@@ -142,7 +129,6 @@ export default function Home() {
     setEditingId(null);
   };
 
-  // Função para resetar o nome customizado
   const resetarNome = (id) => {
     setCustomNames(prev => {
       const novosNomes = { ...prev };
@@ -151,7 +137,6 @@ export default function Home() {
     });
   };
 
-  // Função para adicionar/remover IAs com limite de 3
   const toggleIa = (id) => {
     setIasAtivas(prev => {
       const isAtiva = prev[id];
@@ -185,9 +170,6 @@ export default function Home() {
         .insert([{ user_id: user.id, titulo: tituloGerado }])
         .select()
         .single();
-
-      console.log("CHAT CRIADO:", novoChat);
-      console.log("ERRO CHAT:", erroChat);
 
       if (!erroChat && novoChat) {
         chatId = novoChat.id;
@@ -341,7 +323,7 @@ export default function Home() {
         </div>
       )}
 
-      {/*SELEÇÃO DE IAs */}
+      {/* SELEÇÃO DE IAs */}
       {isModelsOpen && (
         <div className="absolute inset-0 z-50 flex justify-end">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => setIsModelsOpen(false)}></div>
@@ -401,6 +383,7 @@ export default function Home() {
                   <div className={`bg-zinc-950/50 py-3 px-4 border-b border-zinc-800 font-bold text-center ${ia.cor} tracking-wider flex items-center justify-between gap-2 h-12`}>
                     <div className="flex items-center gap-2 truncate flex-1 justify-center pl-6">
                       <Bot className="w-5 h-5 opacity-70 flex-shrink-0" />
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border flex-shrink-0 ${ia.provider === "Gemini" ? "border-yellow-500/40 text-yellow-400 bg-yellow-500/10" : ia.provider === "Mistral" ? "border-rose-500/40 text-rose-400 bg-rose-500/10" : "border-zinc-600 text-zinc-400 bg-zinc-800"}`}>{ia.provider}</span>
                       {editingId === ia.id ? (
                         <input
                           type="text"
